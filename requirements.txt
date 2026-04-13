@@ -1,0 +1,8 @@
+flask
+numpy
+pandas
+MetaTrader5
+requests
+scikit-learn
+xgboost
+tensorflow
