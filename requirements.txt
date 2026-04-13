@@ -6,3 +6,4 @@ requests
 scikit-learn
 xgboost
 tensorflow
+gunicorn
