@@ -1,9 +1,8 @@
 flask
 numpy
 pandas
-MetaTrader5
+ccxt
 requests
 scikit-learn
 xgboost
 tensorflow
-gunicorn
