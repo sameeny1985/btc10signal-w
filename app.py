@@ -15,7 +15,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 LOOKBACK = 60
 SLEEP_SECONDS = 600
 
-TELEGRAM_TOKEN = "YOUR_TOKEN"
+TELEGRAM_TOKEN = "8753161051:AAFI_4KaBPGzFQH7hLuGPy1Abos20VfcrNs"
 CHANNEL_1 = "@btc10signalW"
 CHANNEL_2 = "@btc10signalWVIP"
 
