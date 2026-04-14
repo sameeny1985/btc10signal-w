@@ -26,23 +26,30 @@ MODEL_FILE = "lstm_model.h5"
 # ---------------- TELEGRAM ----------------
 def send_telegram(msg, chat_id):
     import requests
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        requests.post(url, json={"chat_id": chat_id, "text": msg})
-    except Exception as e:
-        print("Telegram Error:", e)
+        requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+            json={"chat_id": chat_id, "text": msg}
+        )
+    except:
+        pass
 
 # ---------------- DATA ----------------
 def get_price():
-    exchange = ccxt.mexc()
-    ticker = exchange.fetch_ticker("BTC/USDT")
-    return float(ticker['last'])
+    return float(ccxt.mexc().fetch_ticker("BTC/USDT")['last'])
 
 def get_ohlcv():
-    exchange = ccxt.mexc()
-    ohlcv = exchange.fetch_ohlcv("BTC/USDT", '1h', limit=500)
+    ohlcv = ccxt.mexc().fetch_ohlcv("BTC/USDT", '1h', limit=500)
     df = pd.DataFrame(ohlcv, columns=['t','o','h','l','c','v'])
     return df[['c','v']]
+
+# ---------------- MARKET FEATURES ----------------
+def market_features(df):
+    close = df['c']
+    trend = close.iloc[-1] - close.iloc[-10]
+    volatility = close.pct_change().std()
+
+    return trend, volatility
 
 # ---------------- LSTM ----------------
 def build_lstm(input_shape):
@@ -65,7 +72,7 @@ def prepare(df):
 
     return np.array(X), np.array(y)
 
-# ---------------- META MODEL ----------------
+# ---------------- META MODEL (FULL HISTORY) ----------------
 def train_meta_model():
     if not os.path.exists(HISTORY_FILE):
         return None
@@ -75,29 +82,34 @@ def train_meta_model():
     if len(df) < 2:
         return None
 
-    X = df[['confidence']]
+    X = df[['confidence','trend','volatility']]
     y = df['result']
 
-    model = XGBClassifier(n_estimators=20, max_depth=3)
+    model = XGBClassifier(n_estimators=50, max_depth=4)
     model.fit(X, y)
+
     return model
 
-# ---------------- SAVE HISTORY ----------------
+# ---------------- SAVE ----------------
 def save_trade(data):
-    df = pd.DataFrame([data])
-    df.to_csv(HISTORY_FILE, mode='a', header=not os.path.exists(HISTORY_FILE), index=False)
+    pd.DataFrame([data]).to_csv(
+        HISTORY_FILE,
+        mode='a',
+        header=not os.path.exists(HISTORY_FILE),
+        index=False
+    )
 
-# ---------------- WEB SERVER ----------------
+# ---------------- SERVER ----------------
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"alive")
 
-def run_server():
-    HTTPServer(('0.0.0.0', 8000), Handler).serve_forever()
-
-threading.Thread(target=run_server, daemon=True).start()
+threading.Thread(
+    target=lambda: HTTPServer(('0.0.0.0',8000), Handler).serve_forever(),
+    daemon=True
+).start()
 
 # ---------------- MEMORY ----------------
 last_trade = None
@@ -112,7 +124,7 @@ while True:
             time.sleep(60)
             continue
 
-        # -------- LSTM LOAD / TRAIN --------
+        # LSTM
         if os.path.exists(MODEL_FILE):
             lstm = load_model(MODEL_FILE)
         else:
@@ -123,65 +135,52 @@ while True:
 
         lstm_prob = float(lstm.predict(X[-1].reshape(1,*X[-1].shape))[0][0])
 
-        # -------- XGBoost --------
-        xgb = XGBClassifier(n_estimators=30, max_depth=3)
+        # XGB
+        xgb = XGBClassifier(n_estimators=30)
         xgb.fit(df.values[LOOKBACK:-1], y)
         xgb_prob = xgb.predict_proba(df.values[-1].reshape(1,-1))[0][1]
 
-        # -------- FINAL --------
-        final_prob = (lstm_prob + xgb_prob) / 2
+        final_prob = (lstm_prob + xgb_prob)/2
         direction = "UP" if final_prob > 0.55 else "DOWN"
 
         price = get_price()
         now = datetime.utcnow()
 
-        # -------- CHANNEL 1 --------
-        msg = f"""
-BTC SIGNAL
+        # CHANNEL 1
+        send_telegram(f"{direction} | {price} | {final_prob:.2f}", CHANNEL_1)
 
-Price: {price}
-Direction: {direction}
-Confidence: {final_prob*100:.2f}
-Time: {now}
-"""
-        send_telegram(msg, CHANNEL_1)
+        # VALIDATE PREVIOUS
+        if last_trade:
+            correct = int(
+                (last_trade["direction"]=="UP" and price>last_trade["price"]) or
+                (last_trade["direction"]=="DOWN" and price<last_trade["price"])
+            )
 
-        # -------- VALIDATE PREVIOUS TRADE --------
-        if last_trade is not None:
-            new_price = price
-
-            correct = 0
-            if last_trade["direction"] == "UP" and new_price > last_trade["price"]:
-                correct = 1
-            elif last_trade["direction"] == "DOWN" and new_price < last_trade["price"]:
-                correct = 1
+            trend, vol = market_features(df)
 
             save_trade({
-                "timestamp": last_trade["time"],
                 "confidence": last_trade["confidence"],
-                "direction": 1 if last_trade["direction"]=="UP" else 0,
+                "trend": trend,
+                "volatility": vol,
                 "result": correct
             })
 
-        # -------- META MODEL (IMMEDIATE LEARNING) --------
+        # META (FULL DATA LEARNING)
         meta = train_meta_model()
 
         if meta:
-            features = np.array([[final_prob]])
+            trend, vol = market_features(df)
+
+            features = np.array([[final_prob, trend, vol]])
             meta_prob = meta.predict_proba(features)[0][1]
 
-            if meta_prob > 0.55:
-                vip_msg = f"""
-VIP SIGNAL 🔥
+            if meta_prob > 0.6:
+                send_telegram(
+                    f"VIP 🔥 {direction}\nScore: {meta_prob:.2f}",
+                    CHANNEL_2
+                )
 
-Direction: {direction}
-Confidence: {meta_prob*100:.2f}
-"""
-                send_telegram(vip_msg, CHANNEL_2)
-
-        # -------- SAVE CURRENT TRADE --------
         last_trade = {
-            "time": now,
             "price": price,
             "direction": direction,
             "confidence": final_prob
@@ -191,5 +190,4 @@ Confidence: {meta_prob*100:.2f}
 
     except Exception as e:
         print("ERROR:", e)
-        send_telegram(f"ERROR: {e}", CHANNEL_1)
         time.sleep(60)
