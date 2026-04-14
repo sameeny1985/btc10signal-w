@@ -2,6 +2,6 @@ numpy
 pandas
 scikit-learn
 xgboost
-tensorflow
+tensorflow-cpu
 ccxt
 requests
