@@ -1,170 +1,196 @@
 import time
-import os
 import numpy as np
 import pandas as pd
-from datetime import datetime
-import requests
-import ccxt
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from datetime import datetime, timedelta
 from sklearn.preprocessing import MinMaxScaler
 from xgboost import XGBClassifier
 from tensorflow.keras.models import Sequential, load_model
-from tensorflow.keras.layers import LSTM, Dense, Dropout, Input
+from tensorflow.keras.layers import LSTM, Dense, Dropout
+import ccxt
+import threading
+import os
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
-# ================== تنظیمات نهایی (بدون دستکاری) ==================
-SYMBOL = "BTC/USDT"
+# ================= CONFIG =================
 LOOKBACK = 60
-SLEEP_SECONDS = 600  # هر 10 دقیقه بررسی مجدد
-LOG_FILE = "trading_history.csv"
-MODEL_PATH = "lstm_main_v25.keras"
+SLEEP_SECONDS = 600
 
 TELEGRAM_TOKEN = "8753161051:AAFI_4KaBPGzFQH7hLuGPy1Abos20VfcrNs"
-CHAT_ID_NORMAL = "@btc10signalW"  # کانال اول (سیگنال‌های خام)
-CHAT_ID_VIP = "@btc10signalWVIP"       # کانال دوم (الگوهای تایید شده 80%)
-# ================================================================
+CHANNEL_1 = "@btc10signalW"
+CHANNEL_2 = "@btc10signalWVIP"
 
+HISTORY_FILE = "trading_history.csv"
+MODEL_FILE = "lstm_model.h5"
+# ==========================================
+
+# ---------------- TELEGRAM ----------------
 def send_telegram(msg, chat_id):
-    """ارسال پیام به تلگرام با مدیریت خطا"""
+    import requests
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        requests.post(url, json={"chat_id": chat_id, "text": msg}, timeout=10)
-    except Exception as e:
-        print(f"Telegram Error: {e}")
+        requests.post(url, json={"chat_id": chat_id, "text": msg})
+    except:
+        pass
 
-def get_data_from_mexc(symbol="BTC/USDT", timeframe='1h', n=500):
-    """دقیقاً مطابق کد قبلی شما برای دریافت قیمت از MEXC"""
-    try:
-        exchange = ccxt.mexc({'enableRateLimit': True})
-        ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=n)
-        if not ohlcv: return pd.DataFrame()
-        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        df['close'] = df['close'].astype(float)
-        df['volume'] = df['volume'].astype(float)
-        return df[['close', 'volume']]
-    except Exception as e:
-        print(f"MEXC Price Error: {e}")
-        return pd.DataFrame()
+# ---------------- DATA ----------------
+def get_price():
+    exchange = ccxt.mexc()
+    ticker = exchange.fetch_ticker("BTC/USDT")
+    return float(ticker['last'])
 
-def update_lstm_model(X, y):
-    """آموزش و بروزرسانی مغز ربات (LSTM) بدون پاک شدن اطلاعات قبلی"""
-    if os.path.exists(MODEL_PATH):
-        try:
-            model = load_model(MODEL_PATH)
-            model.fit(X[-20:], y[-20:], epochs=2, verbose=0)
-            model.save(MODEL_PATH)
-            return model
-        except: pass
-    
-    model = Sequential([
-        Input(shape=(X.shape[1], X.shape[2])),
-        LSTM(64, return_sequences=True),
-        Dropout(0.2),
-        LSTM(32),
-        Dense(1, activation="sigmoid")
-    ])
+def get_ohlcv():
+    exchange = ccxt.mexc()
+    ohlcv = exchange.fetch_ohlcv("BTC/USDT", '1h', limit=500)
+    df = pd.DataFrame(ohlcv, columns=['t','o','h','l','c','v'])
+    return df[['c','v']]
+
+# ---------------- LSTM ----------------
+def build_lstm(input_shape):
+    model = Sequential()
+    model.add(LSTM(64, return_sequences=True, input_shape=input_shape))
+    model.add(Dropout(0.3))
+    model.add(LSTM(32))
+    model.add(Dense(1, activation="sigmoid"))
     model.compile(optimizer="adam", loss="binary_crossentropy")
-    model.fit(X, y, epochs=5, verbose=0)
-    model.save(MODEL_PATH)
     return model
 
-# --- بخش Health Check برای جلوگیری از خوابیدن Render/Koyeb ---
-class HealthCheckHandler(BaseHTTPRequestHandler):
+def prepare(df):
+    scaler = MinMaxScaler()
+    scaled = scaler.fit_transform(df)
+
+    X, y = [], []
+    for i in range(LOOKBACK, len(df)-1):
+        X.append(scaled[i-LOOKBACK:i])
+        y.append(1 if scaled[i+1][0] > scaled[i][0] else 0)
+
+    return np.array(X), np.array(y)
+
+# ---------------- META MODEL ----------------
+def train_meta_model():
+    if not os.path.exists(HISTORY_FILE):
+        return None
+
+    df = pd.read_csv(HISTORY_FILE)
+    if len(df) < 30:
+        return None
+
+    X = df[['weekday','hour','confidence']]
+    y = df['result']
+
+    model = XGBClassifier(n_estimators=50)
+    model.fit(X, y)
+    return model
+
+# ---------------- SAVE HISTORY ----------------
+def save_trade(data):
+    df = pd.DataFrame([data])
+    df.to_csv(HISTORY_FILE, mode='a', header=not os.path.exists(HISTORY_FILE), index=False)
+
+# ---------------- HEALTH SERVER ----------------
+class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
-        self.send_header('Content-type', 'text/html')
         self.end_headers()
-        self.wfile.write(b"Bot is Active and Learning...")
-    def log_message(self, format, *args): return
+        self.wfile.write(b"alive")
 
-def run_health_server():
-    httpd = HTTPServer(('0.0.0.0', 8000), HealthCheckHandler)
-    httpd.serve_forever()
+def run_server():
+    HTTPServer(('0.0.0.0', 8000), Handler).serve_forever()
 
-threading.Thread(target=run_health_server, daemon=True).start()
+threading.Thread(target=run_server, daemon=True).start()
 
-# --- متغیرهای حافظه برای لایه دوم تحلیل ---
-last_price, last_dir, last_conf, last_time = None, None, None, None
+# ---------------- MEMORY ----------------
+open_trades = []
 
-print("--- AI MASTER BOT STARTED (MEXC ENGINE) ---")
-
+# ================= MAIN LOOP =================
 while True:
     try:
-        # ۱. دریافت دیتای تازه
-        df = get_data_from_mexc(symbol=SYMBOL, timeframe='1h', n=500)
-        if df.empty or len(df) < LOOKBACK:
-            time.sleep(30); continue
-        
-        current_price = df['close'].iloc[-1]
-        now = datetime.utcnow()
+        df = get_ohlcv()
+        X, y = prepare(df)
 
-        # ۲. لایه دوم: ثبت و بررسی نتیجه سیگنال قبلی (تکامل)
-        if last_price is not None:
-            # فرمول پیروزی/شکست: آیا قیمت در جهت پیش‌بینی حرکت کرد؟
-            is_correct = 1 if (last_dir == "UP" and current_price > last_price) or \
-                              (last_dir == "DOWN" and current_price < last_price) else 0
-            
-            # ذخیره تجربه در فایل CSV
-            new_entry = pd.DataFrame([{
-                "time": last_time, "confidence": last_conf, "direction": last_dir,
-                "is_correct": is_correct, "hour": pd.to_datetime(last_time).hour,
-                "day": pd.to_datetime(last_time).dayofweek
-            }])
-            new_entry.to_csv(LOG_FILE, mode='a', header=not os.path.exists(LOG_FILE), index=False)
-            print(f">>> Experience Saved: {last_time} Result: {is_correct}")
+        if len(X) < 10:
+            time.sleep(60)
+            continue
 
-        # ۳. لایه اول تحلیل: ترکیب LSTM و XGBoost
-        scaler = MinMaxScaler()
-        scaled = scaler.fit_transform(df.values)
-        
-        X, y = [], []
-        for i in range(LOOKBACK, len(scaled) - 1):
-            X.append(scaled[i-LOOKBACK:i])
-            y.append(1 if scaled[i+1][0] > scaled[i][0] else 0)
-        X, y = np.array(X), np.array(y)
+        # ----- LSTM LOAD / TRAIN -----
+        if os.path.exists(MODEL_FILE):
+            lstm = load_model(MODEL_FILE)
+        else:
+            lstm = build_lstm((X.shape[1], X.shape[2]))
 
-        # پیش‌بینی لایه اول
-        lstm_model = update_lstm_model(X, y)
-        lstm_prob = float(lstm_model.predict(X[-1:], verbose=0)[0][0])
-        
-        xgb_first = XGBClassifier(n_estimators=100, max_depth=4, verbosity=0)
-        xgb_first.fit(df.values[LOOKBACK:-1], y)
-        xgb_prob = float(xgb_first.predict_proba(df.values[-1:])[0][1])
+        lstm.fit(X, y, epochs=2, verbose=0)
+        lstm.save(MODEL_FILE)
 
-        final_prob = (lstm_prob + xgb_prob) / 2
+        lstm_prob = float(lstm.predict(X[-1].reshape(1,*X[-1].shape))[0][0])
+
+        # ----- XGB -----
+        xgb = XGBClassifier()
+        xgb.fit(df.values[LOOKBACK:-1], y)
+        xgb_prob = xgb.predict_proba(df.values[-1].reshape(1,-1))[0][1]
+
+        final_prob = (lstm_prob + xgb_prob)/2
         direction = "UP" if final_prob > 0.55 else "DOWN"
 
-        # ۴. ارسال به کانال اول (گزارش عمومی)
-        msg_normal = (f"BTC iCF936_v25 (MEXC)\n"
-                      f"Price: {current_price:.2f} USD\n"
-                      f"Direction: {direction}\n"
-                      f"Confidence: {final_prob*100:.2f}%\n"
-                      f"Time: {now.strftime('%H:%M')} UTC")
-        send_telegram(msg_normal, CHAT_ID_NORMAL)
+        price = get_price()
 
-        # ۵. لایه دوم تحلیل: بررسی الگوهای ۸۰٪ در تاریخچه
-        if os.path.exists(LOG_FILE):
-            history = pd.read_csv(LOG_FILE)
-            if len(history) >= 2: # شروع از دومین سیگنال
-                meta_learner = XGBClassifier(n_estimators=50, max_depth=3)
-                meta_learner.fit(history[['hour', 'day', 'confidence']], history['is_correct'])
-                
-                # پیش‌بینی احتمال پیروزی واقعی بر اساس تجربه
-                real_accuracy_pattern = meta_learner.predict_proba([[now.hour, now.weekday(), final_prob]])[0][1]
-                
-                if real_accuracy_pattern >= 0.80:
-                    msg_vip = (f"💎 VIP GOLDEN SIGNAL\n"
-                               f"Direction: {direction}\n"
-                               f"Pattern Confidence: {real_accuracy_pattern*100:.2f}%\n"
-                               f"Based on {len(history)} past signals.")
-                    send_telegram(msg_vip, CHAT_ID_VIP)
+        now = datetime.utcnow()
 
-        # ذخیره برای دور بعد (10 دقیقه دیگر)
-        last_price, last_dir, last_conf, last_time = current_price, direction, final_prob, now.strftime('%Y-%m-%d %H:%M:%S')
-        
-        print(f"[{now.strftime('%H:%M')}] Signal Processed. Sleeping...")
+        msg = f"""
+BTC SIGNAL
+
+Price: {price}
+Direction: {direction}
+Confidence: {final_prob*100:.2f}
+Time: {now}
+"""
+        send_telegram(msg, CHANNEL_1)
+
+        # save for validation
+        open_trades.append({
+            "time": now,
+            "price": price,
+            "direction": direction,
+            "confidence": final_prob
+        })
+
+        # ----- VALIDATION -----
+        for trade in open_trades[:]:
+            if datetime.utcnow() - trade["time"] > timedelta(minutes=10):
+                new_price = get_price()
+
+                correct = 0
+                if trade["direction"] == "UP" and new_price > trade["price"]:
+                    correct = 1
+                elif trade["direction"] == "DOWN" and new_price < trade["price"]:
+                    correct = 1
+
+                save_trade({
+                    "timestamp": trade["time"],
+                    "weekday": trade["time"].weekday(),
+                    "hour": trade["time"].hour,
+                    "confidence": trade["confidence"],
+                    "direction": 1 if trade["direction"]=="UP" else 0,
+                    "result": correct
+                })
+
+                open_trades.remove(trade)
+
+        # ----- META MODEL -----
+        meta = train_meta_model()
+        if meta:
+            features = np.array([[now.weekday(), now.hour, final_prob]])
+            meta_prob = meta.predict_proba(features)[0][1]
+
+            if meta_prob > 0.8:
+                vip_msg = f"""
+VIP SIGNAL
+
+Direction: {direction}
+Meta Confidence: {meta_prob*100:.2f}
+"""
+                send_telegram(vip_msg, CHANNEL_2)
+
         time.sleep(SLEEP_SECONDS)
 
     except Exception as e:
-        print(f"MAIN ERROR: {e}")
-        time.sleep(30)
+        send_telegram(f"ERROR: {e}", CHANNEL_1)
+        time.sleep(60)
