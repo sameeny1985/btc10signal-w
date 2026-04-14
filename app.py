@@ -1,7 +1,6 @@
 import time
 import numpy as np
 import pandas as pd
-from datetime import datetime
 from sklearn.preprocessing import MinMaxScaler
 from xgboost import XGBClassifier
 from tensorflow.keras.models import Sequential, load_model
@@ -119,17 +118,20 @@ def save_trade(data):
         index=False
     )
 
-# ---------------- SERVER ----------------
+# ---------------- SERVER (FIXED PORT) ----------------
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"alive")
 
-threading.Thread(
-    target=lambda: HTTPServer(('0.0.0.0',8000), Handler).serve_forever(),
-    daemon=True
-).start()
+PORT = int(os.environ.get("PORT", 10000))
+
+def run_server():
+    server = HTTPServer(('0.0.0.0', PORT), Handler)
+    server.serve_forever()
+
+threading.Thread(target=run_server, daemon=True).start()
 
 # ---------------- MEMORY ----------------
 last_trade = None
@@ -160,7 +162,7 @@ while True:
         xgb.fit(df.values[LOOKBACK:-1], y)
         xgb_prob = xgb.predict_proba(df.values[-1].reshape(1,-1))[0][1]
 
-        base_prob = (lstm_prob + xgb_prob)/2
+        base_prob = (lstm_prob + xgb_prob) / 2
 
         regime, threshold, volatility = market_regime(df)
         direction = "UP" if base_prob > threshold else "DOWN"
@@ -192,7 +194,6 @@ while True:
             features = np.array([[base_prob, volatility]])
             meta_prob = meta.predict_proba(features)[0][1]
 
-            # -------- SIGNAL SCORE --------
             score = (meta_prob * 0.6) + (winrate * 0.4)
 
             if score > 0.65:
