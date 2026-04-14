@@ -1,7 +1,7 @@
-numpy
-pandas
-scikit-learn
-xgboost
-tensorflow-cpu
+numpy==1.24.4
+pandas==2.0.3
+scikit-learn==1.3.2
+xgboost==1.7.6
+tensorflow==2.13.0
 ccxt
 requests
