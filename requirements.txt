@@ -1,8 +1,7 @@
-flask
-numpy==1.26.4
-pandas==2.2.2
-ccxt
-requests
+numpy
+pandas
 scikit-learn
 xgboost
 tensorflow
+ccxt
+requests
