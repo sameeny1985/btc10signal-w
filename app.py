@@ -1,4 +1,5 @@
 import time
+from datetime import datetime
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
@@ -168,10 +169,18 @@ while True:
         direction = "UP" if base_prob > threshold else "DOWN"
 
         price = get_price()
+        current_time = datetime.now().strftime("%H:%M:%S")
 
-        send_telegram(
-            f"{direction} | {price} | Base: {base_prob:.2f} | {regime}",
-            CHANNEL_1
+        msg_normal = (
+            f"📊 NORMAL SIGNAL\n"
+            f"━━━━━━━━━━━━\n"
+            f"Direction: {direction} {'🟢' if direction=='UP' else '🔴'}\n"
+            f"Price: {price:,.2f}\n"
+            f"Confidence: {base_prob:.2%}\n"
+            f"Regime: {regime}\n"
+            f"Time: {current_time}"
+        )
+        send_telegram(msg_normal, CHANNEL_1)
         )
 
         # VALIDATE
@@ -197,10 +206,17 @@ while True:
             score = (meta_prob * 0.6) + (winrate * 0.4)
 
             if score > 0.65:
-                send_telegram(
-                    f"VIP 🔥\nDir: {direction}\nScore: {score:.2f}\nRegime: {regime}",
-                    CHANNEL_2
+                vip_text = (
+                    f"💎 VIP SIGNAL (High Accuracy)\n"
+                    f"━━━━━━━━━━━━\n"
+                    f"Direction: {direction} {'🟢' if direction=='UP' else '🔴'}\n"
+                    f"Entry Price: {price:,.2f}\n"
+                    f"AI Score: {score:.2f}\n"
+                    f"System Winrate: {winrate:.1%}\n"
+                    f"Regime: {regime}\n"
+                    f"Time: {current_time}"
                 )
+                send_telegram(vip_text, CHANNEL_2)
 
         last_trade = {
             "price": price,
