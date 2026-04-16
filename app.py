@@ -181,7 +181,7 @@ while True:
             f"Time: {current_time}"
         )
         send_telegram(msg_normal, CHANNEL_1)
-        )
+        
 
         # VALIDATE
         if last_trade:
