@@ -202,10 +202,10 @@ while True:
         if meta:
             features = np.array([[base_prob, volatility]])
             meta_prob = meta.predict_proba(features)[0][1]
-
             score = (meta_prob * 0.6) + (winrate * 0.4)
 
             if score > 0.65:
+                # پیام مجهز برای VIP
                 vip_text = (
                     f"💎 VIP SIGNAL (High Accuracy)\n"
                     f"━━━━━━━━━━━━\n"
@@ -218,6 +218,7 @@ while True:
                 )
                 send_telegram(vip_text, CHANNEL_2)
 
+        # آپدیت آخرین ترید برای دور بعدی
         last_trade = {
             "price": price,
             "direction": direction,
