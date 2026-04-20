@@ -229,4 +229,14 @@ while True:
 
     except Exception as e:
         print("ERROR:", e)
-        time.sleep(60)
+        # محاسبه زمان انتظار تا شروع ۱۰ دقیقه بعدی
+        # مثلا اگر ساعت 10:04 باشد، ربات 6 دقیقه صبر می‌کند تا دقیقا ساعت 10:10 شود
+        now = datetime.now()
+        seconds_to_wait = (10 - (now.minute % 10)) * 60 - now.second
+        
+        # اگر زمان محاسبه شده خیلی کم بود (زیر 10 ثانیه)، 10 دقیقه کامل صبر کن که حلقه تکراری نزند
+        if seconds_to_wait < 10:
+            seconds_to_wait = 600
+            
+        print(f"💤 Waiting {seconds_to_wait} seconds until next 10-minute candle slot...")
+        time.sleep(seconds_to_wait)
