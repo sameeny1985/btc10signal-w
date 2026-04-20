@@ -10,7 +10,7 @@ import ccxt
 import threading
 import os
 from http.server import HTTPServer, BaseHTTPRequestHandler
-
+from datetime import datetime, timedelta
 # ================= CONFIG =================
 LOOKBACK = 60
 SLEEP_SECONDS = 600
@@ -229,14 +229,15 @@ while True:
 
     except Exception as e:
         print("ERROR:", e)
-        # محاسبه زمان انتظار تا شروع ۱۰ دقیقه بعدی
-        # مثلا اگر ساعت 10:04 باشد، ربات 6 دقیقه صبر می‌کند تا دقیقا ساعت 10:10 شود
+        # محاسبه زمان انتظار تا ۱۵ دقیقه رند بعدی (ثانیه ۱۰)
         now = datetime.now()
-        seconds_to_wait = (10 - (now.minute % 10)) * 60 - now.second
+        minutes_to_wait = 15 - (now.minute % 15)
+        next_run = now.replace(second=10, microsecond=0) + timedelta(minutes=minutes_to_wait)
         
-        # اگر زمان محاسبه شده خیلی کم بود (زیر 10 ثانیه)، 10 دقیقه کامل صبر کن که حلقه تکراری نزند
-        if seconds_to_wait < 10:
-            seconds_to_wait = 600
+        # اگر زمان محاسبه شده به هر دلیلی منفی شد یا همین الان بود
+        wait_seconds = (next_run - datetime.now()).total_seconds()
+        if wait_seconds < 0:
+            wait_seconds += 900 # ۱۵ دقیقه کامل صبر کن
             
-        print(f"💤 Waiting {seconds_to_wait} seconds until next 10-minute candle slot...")
-        time.sleep(seconds_to_wait)
+        print(f"💤 Waiting {int(wait_seconds)} seconds until next 15-minute slot ({next_run.strftime('%H:%M:%S')})...")
+        time.sleep(wait_seconds)
