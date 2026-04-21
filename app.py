@@ -39,7 +39,7 @@ def get_price():
     return float(ccxt.mexc().fetch_ticker("BTC/USDT")['last'])
 
 def get_ohlcv():
-    ohlcv = ccxt.mexc().fetch_ohlcv("BTC/USDT", '1h', limit=500)
+    ohlcv = ccxt.mexc().fetch_ohlcv("BTC/USDT", '15m', limit=500)
     df = pd.DataFrame(ohlcv, columns=['t','o','h','l','c','v'])
     return df[['c','v']]
 
@@ -229,15 +229,27 @@ while True:
 
     except Exception as e:
         print("ERROR:", e)
-        # محاسبه زمان انتظار تا ۱۵ دقیقه رند بعدی (ثانیه ۱۰)
+        # --- تنظیم دقیق روی دقایق 00, 15, 30, 45 ---
         now = datetime.now()
-        minutes_to_wait = 15 - (now.minute % 15)
-        next_run = now.replace(second=10, microsecond=0) + timedelta(minutes=minutes_to_wait)
         
-        # اگر زمان محاسبه شده به هر دلیلی منفی شد یا همین الان بود
-        wait_seconds = (next_run - datetime.now()).total_seconds()
-        if wait_seconds < 0:
-            wait_seconds += 900 # ۱۵ دقیقه کامل صبر کن
-            
-        print(f"💤 Waiting {int(wait_seconds)} seconds until next 15-minute slot ({next_run.strftime('%H:%M:%S')})...")
-        time.sleep(wait_seconds)
+        # تنظیم بازه روی ۱۵ دقیقه
+        interval = 15 
+        
+        # محاسبه دقیق ثانیه‌های باقی‌مانده تا ربع ساعت بعدی
+        minutes_to_next_slot = interval - (now.minute % interval)
+        
+        # محاسبه کل ثانیه‌ها (منهای ثانیه و میکروثانیه فعلی برای دقت صفر ثانیه)
+        seconds_to_wait = (minutes_to_next_slot * 60) - now.second - (now.microsecond / 1000000.0)
+        
+        # اگر کمتر از ۱۰ ثانیه مانده بود، برو برای ۱۵ دقیقه بعد (جلوگیری از تکرار در یک اسلات)
+        if seconds_to_wait < 10:
+            seconds_to_wait += (interval * 60)
+
+        # محاسبه زمان دقیق بیداری برای نمایش در کنسول
+        target_minute = (now.minute + minutes_to_next_slot) % 60
+        target_hour = now.hour + ((now.minute + minutes_to_next_slot) // 60)
+        
+        print(f"🎯 Next signal precisely at: {target_hour:02d}:{target_minute:02d}:00")
+        print(f"💤 Sleeping for {int(seconds_to_wait // 60)}m and {int(seconds_to_wait % 60)}s...")
+        
+        time.sleep(seconds_to_wait)
