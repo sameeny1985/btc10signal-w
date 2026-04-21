@@ -136,14 +136,7 @@ threading.Thread(target=run_server, daemon=True).start()
 
 # ---------------- MEMORY ----------------
 last_trade = None
-# --- کد پاکسازی موقت مدل قدیمی ---
-if os.path.exists(MODEL_FILE):
-    try:
-        os.remove(MODEL_FILE)
-        print("🗑️ Old model deleted successfully! Training from scratch...")
-    except:
-        pass
-# ------------------------------
+
 # ================= MAIN LOOP =================
 while True:
     try:
