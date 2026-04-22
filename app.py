@@ -229,7 +229,11 @@ while True:
 
     except Exception as e:
         print("ERROR:", e)
-        time.sleep(def get_price():
+        # اگر خطا داد، ۶۰ ثانیه صبر کن و دوباره حلقه رو تکرار کن
+        time.sleep(60) 
+
+# حالا تابع get_price باید کاملاً جدا و بیرون از بلوک قبلی باشد
+def get_price():
     return float(ccxt.mexc().fetch_ticker("BTC/USDT")['last'])
 
 def get_ohlcv():
