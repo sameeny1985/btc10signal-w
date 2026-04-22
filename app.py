@@ -153,7 +153,7 @@ while True:
         else:
             lstm = build_lstm((X.shape[1], X.shape[2]))
 
-        lstm.fit(X, y, epochs=1, verbose=0)
+        lstm.fit(X, y, epochs=5, verbose=0)
         lstm.save(MODEL_FILE)
 
         lstm_prob = float(lstm.predict(X[-1].reshape(1,*X[-1].shape))[0][0])
@@ -205,7 +205,7 @@ while True:
 
             score = (meta_prob * 0.6) + (winrate * 0.4)
 
-            if score > 0.65:
+            if score > 0.35:
                 vip_text = (
                     f"💎 VIP SIGNAL (High Accuracy)\n"
                     f"━━━━━━━━━━━━\n"
@@ -229,14 +229,4 @@ while True:
 
     except Exception as e:
         print("ERROR:", e)
-        # محاسبه زمان انتظار تا شروع ۱۰ دقیقه بعدی
-        # مثلا اگر ساعت 10:04 باشد، ربات 6 دقیقه صبر می‌کند تا دقیقا ساعت 10:10 شود
-        now = datetime.now()
-        seconds_to_wait = (10 - (now.minute % 10)) * 60 - now.second
-        
-        # اگر زمان محاسبه شده خیلی کم بود (زیر 10 ثانیه)، 10 دقیقه کامل صبر کن که حلقه تکراری نزند
-        if seconds_to_wait < 10:
-            seconds_to_wait = 600
-            
-        print(f"💤 Waiting {seconds_to_wait} seconds until next 10-minute candle slot...")
-        time.sleep(seconds_to_wait)
+        time.sleep(60)
