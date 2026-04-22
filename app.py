@@ -153,7 +153,7 @@ while True:
         else:
             lstm = build_lstm((X.shape[1], X.shape[2]))
 
-        lstm.fit(X, y, epochs=1, verbose=0)
+        lstm.fit(X, y, epochs=5, verbose=0)
         lstm.save(MODEL_FILE)
 
         lstm_prob = float(lstm.predict(X[-1].reshape(1,*X[-1].shape))[0][0])
