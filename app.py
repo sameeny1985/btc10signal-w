@@ -205,7 +205,7 @@ while True:
 
             score = (meta_prob * 0.6) + (winrate * 0.4)
 
-            if score > 0.65:
+            if score > 0.35:
                 vip_text = (
                     f"💎 SHAPYAAR BTC VIP SIGNAL (High Accuracy)\n"
                     f"━━━━━━━━━━━━\n"
