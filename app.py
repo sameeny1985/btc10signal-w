@@ -153,7 +153,7 @@ while True:
         else:
             lstm = build_lstm((X.shape[1], X.shape[2]))
 
-        lstm.fit(X, y, epochs=5, verbose=0)
+        lstm.fit(X, y, epochs=1, verbose=0)
         lstm.save(MODEL_FILE)
 
         lstm_prob = float(lstm.predict(X[-1].reshape(1,*X[-1].shape))[0][0])
@@ -172,7 +172,7 @@ while True:
         current_time = datetime.now().strftime("%H:%M:%S")
 
         msg_normal = (
-            f"📊 NORMAL SIGNAL\n"
+            f"📊 SHAPYAAR BTC NORMAL SIGNAL\n"
             f"━━━━━━━━━━━━\n"
             f"Direction: {direction} {'🟢' if direction=='UP' else '🔴'}\n"
             f"Price: {price:,.2f}\n"
@@ -205,9 +205,9 @@ while True:
 
             score = (meta_prob * 0.6) + (winrate * 0.4)
 
-            if score > 0.35:
+            if score > 0.65:
                 vip_text = (
-                    f"💎 VIP SIGNAL (High Accuracy)\n"
+                    f"💎 SHAPYAAR BTC VIP SIGNAL (High Accuracy)\n"
                     f"━━━━━━━━━━━━\n"
                     f"Direction: {direction} {'🟢' if direction=='UP' else '🔴'}\n"
                     f"Entry Price: {price:,.2f}\n"
