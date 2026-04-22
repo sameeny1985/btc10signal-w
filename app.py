@@ -136,14 +136,6 @@ threading.Thread(target=run_server, daemon=True).start()
 
 # ---------------- MEMORY ----------------
 last_trade = None
-# --- کد پاک‌سازی مدل برای کالیبره شدن مجدد (فقط یک‌بار اجرا می‌شود) ---
-if os.path.exists(MODEL_FILE):
-    try:
-        os.remove(MODEL_FILE)
-        print(f"✅ Old model ({MODEL_FILE}) deleted. Training fresh with 1H data...")
-    except Exception as e:
-        print(f"⚠️ Could not delete model file: {e}")
-# -------------------------------------------------------------------
 
 
 # ================= MAIN LOOP =================
