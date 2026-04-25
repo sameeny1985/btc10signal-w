@@ -10,7 +10,11 @@ import ccxt
 import threading
 import os
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from supabase import create_client, Client
 
+SUPABASE_URL = "https://tzjjbuqwwipendmimdfj.supabase.co/rest/v1/"
+SUPABASE_KEY = "sb_publishable_B34Q6QO5xQnAcMqaIjAcLQ_ytu5u7TA"
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 # ================= CONFIG =================
 LOOKBACK = 60
 SLEEP_SECONDS = 600
@@ -86,38 +90,37 @@ def prepare(df):
 
 # ---------------- META MODEL ----------------
 def train_meta_model():
-    if not os.path.exists(HISTORY_FILE):
+    try:
+        # دریافت داده‌ها از سوپابیس
+        response = supabase.table("trading_history").select("*").execute()
+        data = response.data
+        
+        if len(data) < 5: # سدِ ۵ سیگنال
+            return None, 0.5
+
+        df = pd.DataFrame(data)
+        X = df[['confidence', 'volatility']]
+        y = df['result']
+        
+        winrate = y.mean()
+        model = XGBClassifier(n_estimators=100, max_depth=4)
+        model.fit(X, y)
+        
+        return model, winrate
+    except Exception as e:
+        print(f"❌ Supabase Read Error: {e}")
         return None, 0.5
-
-    df = pd.read_csv(HISTORY_FILE)
-
-    if len(df) < 5:
-        return None, 0.5
-
-    df['weight'] = np.linspace(0.1, 1.0, len(df))
-
-    if len(df) > 15000:
-        df = df.sample(15000, weights=df['weight'])
-
-    X = df[['confidence','volatility']]
-    y = df['result']
-    w = df['weight']
-
-    winrate = y.mean()
-
-    model = XGBClassifier(n_estimators=100, max_depth=4)
-    model.fit(X, y, sample_weight=w)
-
-    return model, winrate
-
 # ---------------- SAVE ----------------
 def save_trade(data):
-    pd.DataFrame([data]).to_csv(
-        HISTORY_FILE,
-        mode='a',
-        header=not os.path.exists(HISTORY_FILE),
-        index=False
-    )
+    try:
+        supabase.table("trading_history").insert({
+            "confidence": float(data["confidence"]),
+            "volatility": float(data["volatility"]),
+            "result": int(data["result"])
+        }).execute()
+        print("✅ Data saved to Supabase")
+    except Exception as e:
+        print(f"❌ Supabase Save Error: {e}")
 
 # ---------------- SERVER (FIXED PORT) ----------------
 class Handler(BaseHTTPRequestHandler):
