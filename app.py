@@ -36,9 +36,19 @@ def get_price():
     return float(ccxt.mexc().fetch_ticker("BTC/USDT")['last'])
 
 def get_ohlcv():
-    ohlcv = ccxt.mexc().fetch_ohlcv("BTC/USDT", '1h', limit=500)
-    df = pd.DataFrame(ohlcv, columns=['t','o','h','l','c','v'])
-    return df[['c','v']]
+    try:
+        # استفاده از تایم‌فریم 1 دقیقه‌ای برای درک نوسانات نزدیک
+        # این دیتا فقط برای "آموزش مدل" استفاده می‌شود، نه قیمت ورود (Entry)
+        exchange = ccxt.mexc()
+        ohlcv = exchange.fetch_ohlcv("BTC/USDT", '1m', limit=500)
+        df = pd.DataFrame(ohlcv, columns=['t', 'o', 'h', 'l', 'c', 'v'])
+        
+        # ما فقط به قیمت بسته شدن (c) و حجم معاملات (v) برای تحلیل نیاز داریم
+        return df[['c', 'v']]
+    except Exception as e:
+        print(f"Error fetching OHLCV: {e}")
+        # بازگرداندن یک دیتای خالی یا قبلی برای جلوگیری از توقف ربات
+        return pd.DataFrame()
 
 def market_regime(df):
     returns = df['c'].pct_change()
@@ -103,19 +113,21 @@ threading.Thread(target=run_server, daemon=True).start()
 # ================= MAIN PROCESS =================
 last_trade = None
 
+# ================= اصلاح شده برای قیمت لحظه‌ای (TICKER) =================
+
 while True:
     try:
-        # ۱. هماهنگی با دقیقه طلایی (هر ۵ دقیقه چک می‌کند)
+        # ۱. هماهنگی با ثانیه صفر
         now_time = wait_for_interval(5)
         
-        df = get_ohlcv()
-        current_price = get_price()
-        regime, volatility = market_regime(df)
+        # ۲. بلافاصله گرفتن قیمت تیکر (Ticker Price) - قبل از هر کار دیگری
+        # این همان عددی است که در مکسی می‌بینی
+        exact_ticker_price = get_price() 
         
-        # ۲. اعتبارسنجی سیگنال قبلی (دقیقاً بعد از ۱۰ دقیقه)
+        # ۳. اعتبارسنجی سیگنال قبلی با قیمت تیکر جدید
         if last_trade and (now_time.minute == (last_trade["minute"] + 10) % 60):
-            is_correct = 1 if (last_trade["direction"] == "UP" and current_price > last_trade["price"]) or \
-                             (last_trade["direction"] == "DOWN" and current_price < last_trade["price"]) else 0
+            is_correct = 1 if (last_trade["direction"] == "UP" and exact_ticker_price > last_trade["price"]) or \
+                             (last_trade["direction"] == "DOWN" and exact_ticker_price < last_trade["price"]) else 0
             
             save_trade({
                 "confidence": last_trade["confidence"],
@@ -124,50 +136,54 @@ while True:
                 "minute": last_trade["minute"],
                 "result": is_correct
             })
-            print(f"Validated: {last_trade['minute']} -> {now_time.minute} | Result: {is_correct}")
 
-        # ۳. تحلیل تکنیکال (LSTM)
+        # ۴. حالا برود سراغ تحلیل سنگین (اینجا دیگر مهم نیست چقدر طول بکشد)
+        df = get_ohlcv()
+        regime, volatility = market_regime(df)
         X_train, y_train = prepare(df)
+        
+        # لود و پیش‌بینی
         if os.path.exists(MODEL_FILE): lstm = load_model(MODEL_FILE)
         else:
             lstm = Sequential([LSTM(64, input_shape=(X_train.shape[1], X_train.shape[2])), Dense(1, activation="sigmoid")])
             lstm.compile(optimizer="adam", loss="binary_crossentropy")
         
-        lstm.fit(X_train, y_train, epochs=1, verbose=0)
-        lstm.save(MODEL_FILE)
-        
         prob = float(lstm.predict(X_train[-1].reshape(1, *X_train[-1].shape), verbose=0)[0][0])
         direction = "UP" if prob > 0.5 else "DOWN"
 
-        # ۴. ارسال به کانال نرمال
-        msg = (f"⏱ **10-MIN SIGNAL**\n"
+        # ۵. ارسال به تلگرام با همان قیمتی که در ثانیه صفر گرفتیم (نه قیمت الان!)
+        msg = (f"⏱ **10-MIN BINARY SIGNAL**\n"
                f"Direction: {direction} {'🟢' if direction=='UP' else '🔴'}\n"
-               f"Entry: `{current_price:,.2f}`\n"
-               f"Time: {now_time.strftime('%H:%M')}")
+               f"Entry (Ticker): `{exact_ticker_price:,.2f}`\n"
+               f"Time: {now_time.strftime('%H:%M:%S')}")
         send_telegram(msg, CHANNEL_1)
 
-        # ۵. فیلتر VIP (الگویابی زمانی)
+        # ۶. بخش VIP (الگویابی زمانی)
         meta, winrate = train_meta_model()
         if meta:
             feat = np.array([[prob, volatility, now_time.hour, now_time.minute]])
             meta_prob = meta.predict_proba(feat)[0][1]
             score = (meta_prob * 0.7) + (winrate * 0.3)
             
-            if score > 0.72: # آستانه سخت‌گیرانه برای VIP
-                vip_msg = (f"💎 **VIP GOLDEN MINUTE**\n"
+            if score > 0.72:
+                vip_msg = (f"💎 **VIP TICKER SIGNAL**\n"
                            f"Direction: {direction}\n"
-                           f"Accuracy Score: `{score:.2f}`\n"
-                           f"System Winrate: `{winrate:.1%}`")
+                           f"Entry: `{exact_ticker_price:,.2f}`\n"
+                           f"AI Score: `{score:.2f}`")
                 send_telegram(vip_msg, CHANNEL_2)
 
-        # ۶. ذخیره برای ۱۰ دقیقه بعد
+        # ۷. ذخیره قیمت ورود برای ۱۰ دقیقه بعد
         last_trade = {
-            "price": current_price, "direction": direction, "confidence": prob,
-            "volatility": volatility, "hour": now_time.hour, "minute": now_time.minute
+            "price": exact_ticker_price, 
+            "direction": direction, 
+            "confidence": prob,
+            "volatility": volatility, 
+            "hour": now_time.hour, 
+            "minute": now_time.minute
         }
         
-        time.sleep(10) # جلوگیری از تکرار در همان ثانیه
+        time.sleep(10)
 
     except Exception as e:
-        print(f"Loop Error: {e}")
-        time.sleep(5)
+        print(f"Error: {e}")
+        time.sleep(1)
