@@ -139,10 +139,7 @@ threading.Thread(target=run_server, daemon=True).start()
 
 # ---------------- MEMORY ----------------
 last_trade = None
-# --- کد پاک‌سازی مدل (فقط یک بار برای کالیبره شدن با دیتای 1 ساعته) ---
-if os.path.exists(MODEL_FILE):
-    os.remove(MODEL_FILE)
-    print("✅ Old model deleted for 1H calibration.")
+
 # ================= MAIN LOOP =================
 while True:
     try:
