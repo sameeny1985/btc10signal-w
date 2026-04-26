@@ -12,21 +12,21 @@ import os
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from supabase import create_client, Client
 
-SUPABASE_URL = "https://tzjjbuqwwipendmimdfj.supabase.co"
-SUPABASE_KEY = "sb_publishable_B34Q6QO5xQnAcMqaIjAcLQ_ytu5u7TA"
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 # ================= CONFIG =================
+# مقادیر زیر را دقیقاً به این شکل اصلاح کن
+SUPABASE_URL = "https://tzjjbuqwwipendmimdfj.supabase.co" # بدون rest/v1
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6ampidXF3d2lwZW5kbWltZGZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxNDU2ODgsImV4cCI6MjA5MjcyMTY4OH0.Yub8Kl3pnkRIDPDsyLucAWKbORO4ndHW9oFLueQubQc" 
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
 LOOKBACK = 60
 SLEEP_SECONDS = 600
-
 TELEGRAM_TOKEN = "8753161051:AAFI_4KaBPGzFQH7hLuGPy1Abos20VfcrNs"
 CHANNEL_1 = -1003893409389
 CHANNEL_2 = -1003698594050
 
 HISTORY_FILE = "trading_history.csv"
 MODEL_FILE = "lstm_model.h5"
-# ==========================================
-
 # ---------------- TELEGRAM ----------------
 def send_telegram(msg, chat_id):
     import requests
@@ -139,7 +139,10 @@ threading.Thread(target=run_server, daemon=True).start()
 
 # ---------------- MEMORY ----------------
 last_trade = None
-
+# --- کد پاک‌سازی مدل (فقط یک بار برای کالیبره شدن با دیتای 1 ساعته) ---
+if os.path.exists(MODEL_FILE):
+    os.remove(MODEL_FILE)
+    print("✅ Old model deleted for 1H calibration.")
 # ================= MAIN LOOP =================
 while True:
     try:
