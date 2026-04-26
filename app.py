@@ -12,7 +12,7 @@ import os
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from supabase import create_client, Client
 
-SUPABASE_URL = "https://tzjjbuqwwipendmimdfj.supabase.co/rest/v1/"
+SUPABASE_URL = "https://tzjjbuqwwipendmimdfj.supabase.co"
 SUPABASE_KEY = "sb_publishable_B34Q6QO5xQnAcMqaIjAcLQ_ytu5u7TA"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 # ================= CONFIG =================
