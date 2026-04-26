@@ -90,7 +90,7 @@ def save_trade(data):
     except Exception as e: print(f"DB Error: {e}")
 
 # ---------------- زمان‌بندی دقیق ----------------
-def wait_for_interval(minutes_step=5):
+def wait_for_interval(minutes_step=10):
     while True:
         now = datetime.now()
         if now.minute % minutes_step == 0 and now.second < 2:
@@ -118,7 +118,7 @@ last_trade = None
 while True:
     try:
         # ۱. هماهنگی با ثانیه صفر
-        now_time = wait_for_interval(5)
+        now_time = wait_for_interval(10)
         
         # ۲. بلافاصله گرفتن قیمت تیکر (Ticker Price) - قبل از هر کار دیگری
         # این همان عددی است که در مکسی می‌بینی
