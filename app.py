@@ -40,7 +40,7 @@ def get_ohlcv():
         # استفاده از تایم‌فریم 1 دقیقه‌ای برای درک نوسانات نزدیک
         # این دیتا فقط برای "آموزش مدل" استفاده می‌شود، نه قیمت ورود (Entry)
         exchange = ccxt.mexc()
-        ohlcv = exchange.fetch_ohlcv("BTC/USDT", '1m', limit=500)
+        ohlcv = exchange.fetch_ohlcv("BTC/USDT", '15m', limit=500)
         df = pd.DataFrame(ohlcv, columns=['t', 'o', 'h', 'l', 'c', 'v'])
         
         # ما فقط به قیمت بسته شدن (c) و حجم معاملات (v) برای تحلیل نیاز داریم
@@ -118,7 +118,7 @@ last_trade = None
 while True:
     try:
         # ۱. هماهنگی با ثانیه صفر
-        now_time = wait_for_interval(10)
+        now_time = wait_for_interval(60)
         
         # ۲. بلافاصله گرفتن قیمت تیکر (Ticker Price) - قبل از هر کار دیگری
         # این همان عددی است که در مکسی می‌بینی
