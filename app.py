@@ -1,4 +1,5 @@
 import time
+import pytz
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -17,7 +18,7 @@ SUPABASE_URL = "https://tzjjbuqwwipendmimdfj.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR6ampidXF3d2lwZW5kbWltZGZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxNDU2ODgsImV4cCI6MjA5MjcyMTY4OH0.Yub8Kl3pnkRIDPDsyLucAWKbORO4ndHW9oFLueQubQc" # کلید درست را اینجا بگذار
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-LOOKBACK = 60
+LOOKBACK = 168
 TELEGRAM_TOKEN = "8753161051:AAFI_4KaBPGzFQH7hLuGPy1Abos20VfcrNs"
 CHANNEL_1 = -1003893409389 # Normal
 CHANNEL_2 = -1003698594050 # VIP
@@ -40,7 +41,7 @@ def get_ohlcv():
         # استفاده از تایم‌فریم 1 دقیقه‌ای برای درک نوسانات نزدیک
         # این دیتا فقط برای "آموزش مدل" استفاده می‌شود، نه قیمت ورود (Entry)
         exchange = ccxt.mexc()
-        ohlcv = exchange.fetch_ohlcv("BTC/USDT", '15m', limit=500)
+        ohlcv = exchange.fetch_ohlcv("BTC/USDT", '1h', limit=1000)
         df = pd.DataFrame(ohlcv, columns=['t', 'o', 'h', 'l', 'c', 'v'])
         
         # ما فقط به قیمت بسته شدن (c) و حجم معاملات (v) برای تحلیل نیاز داریم
@@ -90,12 +91,18 @@ def save_trade(data):
     except Exception as e: print(f"DB Error: {e}")
 
 # ---------------- زمان‌بندی دقیق ----------------
-def wait_for_interval(minutes_step=10):
+def wait_for_daily_signal(target_hour=2):
+    """ربات را تا ساعت ۲ بامداد بلژیک متوقف می‌کند"""
     while True:
-        now = datetime.now()
-        if now.minute % minutes_step == 0 and now.second < 2:
+        # تنظیم دقیق روی زمان بلژیک
+        belgium_tz = pytz.timezone('Europe/Brussels')
+        now = datetime.now(belgium_tz)
+        
+        # چک کردن ساعت و دقیقه (فقط رأس ساعت ۲:۰۰:۰۰)
+        if now.hour == target_hour and now.minute == 0 and now.second < 10:
             return now
-        time.sleep(1)
+        
+        time.sleep(30) # هر ۳۰ ثانیه برای فشار نیامدن به سرور
 
 # ---------------- SERVER ----------------
 class Handler(BaseHTTPRequestHandler):
@@ -118,7 +125,7 @@ last_trade = None
 while True:
     try:
         # ۱. هماهنگی با ثانیه صفر
-        now_time = wait_for_interval(60)
+        now_time = wait_for_daily_signal(2)
         
         # ۲. بلافاصله گرفتن قیمت تیکر (Ticker Price) - قبل از هر کار دیگری
         # این همان عددی است که در مکسی می‌بینی
@@ -182,7 +189,7 @@ while True:
             "minute": now_time.minute
         }
         
-        time.sleep(10)
+        time.sleep(3600)
 
     except Exception as e:
         print(f"Error: {e}")
