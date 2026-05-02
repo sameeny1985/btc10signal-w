@@ -6,3 +6,4 @@ tensorflow==2.13.0
 ccxt
 requests
 supabase
+pytz
